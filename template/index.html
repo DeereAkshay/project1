@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dataset Explorer</title>
-  <link rel="stylesheet" href="/static/style.css?v=8" />
+  <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
-  <!-- Header: ONLY left-side logo -->
+  <!-- Header: left logo only -->
   <header class="topbar">
     <div class="brand">
-      <img src="/static/jd_logo.png" alt="JD Logo" class="jd-logo-img" />
+      <img src="/static/jd_logo.png" alt="JD Logo" class="jd-logo-img">
     </div>
     <div class="topbar-actions">
       <span class="pill" id="appStatusPill">Ready</span>
@@ -41,9 +41,7 @@
       </div>
 
       <div class="helper-row">
-        <div class="helper-text">
-          Press <b>Enter</b> to search • Press <b>Esc</b> to clear
-        </div>
+        <div class="helper-text">Press <b>Enter</b> to search • Press <b>Esc</b> to clear</div>
         <div class="helper-actions">
           <label class="small-label">Limit:</label>
           <select id="limitSelect" class="select">
@@ -85,8 +83,8 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Put JS at the end so DOM exists for sure -->
-  <script src="/static/script.js?v=8"></script>
+  <!-- Script at end of body to ensure DOM is ready -->
+  <script src="/static/script.js?v=9"></script>
 </body>
 </html>
 

@@ -8,17 +8,17 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+from fastapi.middleware.cors import CORSMiddleware
 
 # -------------------------------------------
 # PATHS
 # -------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-TEMPLATE_DIR = BASE_DIR / "template"   # keep singular; matches your project
+TEMPLATE_DIR = BASE_DIR / "template"   # keep singular; your repo uses "template/"
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "company_data.csv"
@@ -28,13 +28,14 @@ app = FastAPI(title="Dataset Explorer (CSV/Excel Search + Export)")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
-# CORS (harmless for same-origin; future-proof if you split FE/BE)
+# ---- CORS: no credentials; allow any origin (or restrict to your Render origin) ----
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # you can restrict to your Render origin later
-    allow_credentials=True,
+    allow_origins=["*"],              # or ["https://project1-yo8e.onrender.com"]
+    allow_credentials=False,          # IMPORTANT with Zscaler redirects
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # helps CSV download
 )
 
 logger = logging.getLogger("uvicorn")
@@ -96,7 +97,6 @@ def safe_contains_any(obj, text: str) -> pd.Series:
 # JSON SANITIZER (fix for NaN / Inf / numpy types)
 # -------------------------------------------
 def _json_safe_value(v: Any) -> Any:
-    """Convert values to JSON-safe types (NaN/Inf -> None, numpy scalars -> python scalars)."""
     if v is None:
         return None
     try:
@@ -122,18 +122,12 @@ def _json_safe_value(v: Any) -> Any:
 
 
 def df_to_json_safe(df: pd.DataFrame) -> (List[str], List[Dict[str, Any]]):
-    """
-    Convert DF -> (columns, rows) where rows are JSON-safe dicts.
-    This guarantees no NaN/Inf remains.
-    """
     if df is None or df.empty:
         return [], []
     cleaned = df.replace([np.inf, -np.inf], np.nan).astype(object)
     cleaned = cleaned.where(pd.notnull(cleaned), None)
     records = cleaned.to_dict(orient="records")
-    safe_records = []
-    for r in records:
-        safe_records.append({k: _json_safe_value(v) for k, v in r.items()})
+    safe_records = [{k: _json_safe_value(v) for k, v in r.items()} for r in records]
     return cleaned.columns.tolist(), safe_records
 
 
@@ -153,7 +147,7 @@ def safe_load_data_or_error():
 
 
 # -------------------------------------------
-# OPTIONAL PING (kept for diagnostics/future)
+# DIAGNOSTIC PING
 # -------------------------------------------
 @app.get("/api/ping")
 def ping():
@@ -161,7 +155,7 @@ def ping():
 
 
 # -------------------------------------------
-# UI ROUTE
+# UI ROUTES
 # -------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -192,12 +186,10 @@ def search_machine(
     df, err = safe_load_data_or_error()
     if err:
         return err
-
     if "native_pin" not in df.columns:
         raise HTTPException(400, "Column 'native_pin' not found in dataset.")
 
     mid = machine_id.strip()
-    # exact match first
     mask = df["native_pin"].astype(str).str.strip().eq(mid)
     if int(mask.sum()) == 0:
         mask = safe_contains_any(df["native_pin"], mid)
@@ -226,11 +218,10 @@ def search_location(
         return err
 
     query = q.strip()
-    # Detect Country/State/City case-insensitively
     cols_lower = {c.lower(): c for c in df.columns}
     country_col = cols_lower.get("country")
-    state_col = cols_lower.get("state")
-    city_col = cols_lower.get("city")
+    state_col   = cols_lower.get("state")
+    city_col    = cols_lower.get("city")
     cols = [c for c in [country_col, state_col, city_col] if c is not None]
     if not cols:
         raise HTTPException(400, "Country/State/City columns not found in dataset.")
@@ -260,16 +251,14 @@ def stream_df_as_csv(df: pd.DataFrame, filename: str):
         writer = csv.writer(buffer)
         writer.writerow(df.columns.tolist())
         yield buffer.getvalue()
-        buffer.seek(0)
-        buffer.truncate(0)
+        buffer.seek(0); buffer.truncate(0)
 
         df2 = df.replace([np.inf, -np.inf], np.nan)
         for row in df2.itertuples(index=False, name=None):
             row_out = [("" if (isinstance(v, float) and (math.isnan(v) or math.isinf(v))) else v) for v in row]
             writer.writerow(row_out)
             yield buffer.getvalue()
-            buffer.seek(0)
-            buffer.truncate(0)
+            buffer.seek(0); buffer.truncate(0)
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(generate(), media_type="text/csv", headers=headers)
@@ -283,7 +272,6 @@ def export_machine(machine_id: str = Query(...)):
     df, err = safe_load_data_or_error()
     if err:
         return err
-
     if "native_pin" not in df.columns:
         raise HTTPException(400, "Column 'native_pin' not found in dataset.")
 
@@ -306,8 +294,8 @@ def export_location(q: str = Query(...)):
     query = q.strip()
     cols_lower = {c.lower(): c for c in df.columns}
     country_col = cols_lower.get("country")
-    state_col = cols_lower.get("state")
-    city_col = cols_lower.get("city")
+    state_col   = cols_lower.get("state")
+    city_col    = cols_lower.get("city")
     cols = [c for c in [country_col, state_col, city_col] if c is not None]
     if not cols:
         raise HTTPException(400, "Country/State/City columns not found in dataset.")
@@ -320,3 +308,5 @@ def export_location(q: str = Query(...)):
     out_df = df.loc[mask]
     filename = f"location_{q}_matched_{len(out_df)}.csv".replace(" ", "_")
     return stream_df_as_csv(out_df, filename)
+
+
