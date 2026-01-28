@@ -4,9 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dataset Explorer</title>
-  <link rel="stylesheet" href="/static/style.css?v=7" />
-  <!-- Load JS with defer so it runs after DOM is parsed -->
-  <script src="/static/script.js?v=7" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=8" />
 </head>
 <body>
   <!-- Header: ONLY left-side logo -->
@@ -86,5 +84,9 @@
   </main>
 
   <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Put JS at the end so DOM exists for sure -->
+  <script src="/static/script.js?v=8"></script>
 </body>
 </html>
+

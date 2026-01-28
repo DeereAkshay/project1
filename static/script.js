@@ -1,22 +1,13 @@
-// Run AFTER DOM is ready even if defer accidentally removed
-(function attachWhenReady() {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-})();
+'use strict';
 
-function boot() {
-  console.log('JD app booted');
+// Run AFTER everything is loaded (images/css too) so elements definitely exist
+window.onload = function boot() {
+  console.log('[JD] app booted');
 
   // ---- DOM references ----
   const outputBox = document.getElementById("outputBox");
-  const outputSubtitle = document.getElementById("outputSubtitle");
   const machineInput = document.getElementById("machineId");
   const locationInput = document.getElementById("location");
-  const machineErr = document.getElementById("machineErr");
-  const locationErr = document.getElementById("locationErr");
   const machineBtn = document.getElementById("machineSearchBtn");
   const locationBtn = document.getElementById("locationSearchBtn");
   const clearBtn = document.getElementById("clearOutputBtn");
@@ -28,12 +19,14 @@ function boot() {
   const statusText = document.getElementById("statusText");
   const copyJsonBtn = document.getElementById("copyJsonBtn");
 
-  // Guard: if critical elements are missing, stop and show why
-  const critical = [outputBox, machineBtn, locationBtn, limitSelect];
-  if (critical.some(el => !el)) {
-    console.error('DOM not ready or IDs changed', { outputBox, machineBtn, locationBtn, limitSelect });
-    alert('Internal error: UI elements not found. Please refresh.');
-    return;
+  // Verify critical elements exist
+  const critical = { outputBox, machineBtn, locationBtn, limitSelect };
+  for (const [k, v] of Object.entries(critical)) {
+    if (!v) {
+      console.error(`[JD] Missing element: ${k}`, critical);
+      alert('Internal error: UI elements not found. Refresh the page.');
+      return;
+    }
   }
 
   // Track last search for export
@@ -47,13 +40,13 @@ function boot() {
       if (prewarmed) return resolve();
       const i = document.createElement('iframe');
       i.style.display = 'none';
-      i.src = '/health'; // fast JSON endpoint on your server
+      i.src = '/health'; // fast JSON endpoint
       i.onload = () => { prewarmed = true; i.remove(); resolve(); };
       i.onerror = () => { prewarmed = true; i.remove(); resolve(); };
       document.body.appendChild(i);
     });
   }
-  // prewarm once per load
+  // trigger once
   prewarmViaIframe().catch(()=>{});
 
   function escapeHtml(v) {
@@ -187,6 +180,7 @@ function boot() {
     await prewarmViaIframe();
     const v = locationInput.value.trim();
     if (!v) { showError("Location required"); return; }
+    console.log('[JD] Location search click', v);
     showLoading("Searching location...");
     try {
       const limit = parseInt(limitSelect.value) || 50;
@@ -202,6 +196,7 @@ function boot() {
     await prewarmViaIframe();
     const v = machineInput.value.trim();
     if (!v) { showError("Machine ID required"); return; }
+    console.log('[JD] Machine search click', v);
     showLoading("Searching machine...");
     try {
       const limit = parseInt(limitSelect.value) || 50;
@@ -257,17 +252,22 @@ function boot() {
   }
 
   // ---- Bind Events ----
-  machineBtn.onclick = () => { console.log('Machine search click'); searchByMachine(); };
-  locationBtn.onclick = () => { console.log('Location search click'); searchByLocation(); };
-  machineInput.onkeydown = e => { if (e.key === "Enter") searchByMachine(); };
-  locationInput.onkeydown = e => { if (e.key === "Enter") searchByLocation(); };
-  clearBtn.onclick = showHint;
-  downloadBtn.onclick = downloadAllMatched;
-  copyJsonBtn.onclick = copyJson;
+  machineBtn.addEventListener('click', searchByMachine);
+  locationBtn.addEventListener('click', searchByLocation);
+  machineInput.addEventListener('keydown', e => { if (e.key === "Enter") searchByMachine(); });
+  locationInput.addEventListener('keydown', e => { if (e.key === "Enter") searchByLocation(); });
+  clearBtn.addEventListener('click', showHint);
+  downloadBtn.addEventListener('click', downloadAllMatched);
+  copyJsonBtn.addEventListener('click', async () => {
+    if (!lastResult) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(lastResult.rows, null, 2));
+      toast("success", "Copied JSON to clipboard");
+    } catch {
+      toast("error", "Copy failed");
+    }
+  });
 
   // Init
   showHint();
-}
-
-
-
+};
