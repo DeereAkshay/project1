@@ -21,6 +21,22 @@
   let lastSearch = null;
   let lastResult = null;
 
+  // ---------- AU pre-warm via hidden iframe ----------
+  let prewarmed = false;
+  function prewarmViaIframe() {
+    return new Promise((resolve) => {
+      if (prewarmed) return resolve();
+      const i = document.createElement('iframe');
+      i.style.display = 'none';
+      i.src = '/health'; // fast JSON endpoint on your server
+      i.onload = () => { prewarmed = true; i.remove(); resolve(); };
+      i.onerror = () => { prewarmed = true; i.remove(); resolve(); };
+      document.body.appendChild(i);
+    });
+  }
+  // prewarm once per load
+  prewarmViaIframe().catch(()=>{});
+
   function escapeHtml(v) {
     return String(v ?? "")
       .replace(/&/g, "&amp;")
@@ -64,37 +80,55 @@
     statusText.textContent = msg;
   }
 
-  // --- Hardened fetchJson: include credentials, handle AU redirect, non-JSON, empty bodies ---
+  // ---------- Hardened fetchJson with retry ----------
   async function fetchJson(url) {
-    const res = await fetch(url, {
+    const abs = `${window.location.origin}${url.startsWith('/') ? url : '/' + url}`;
+
+    const doFetch = () => fetch(abs, {
       credentials: 'include',
       headers: { 'Accept': 'application/json' },
-      cache: 'no-store'
+      cache: 'no-store',
+      redirect: 'follow'
     });
 
-    const ct = res.headers.get('content-type') || '';
+    let res = await doFetch();
 
-    if (!res.ok) {
-      let msg = '';
-      try {
-        if (ct.includes('application/json')) {
-          const j = await res.json();
-          msg = j.detail || JSON.stringify(j);
-        } else {
-          msg = await res.text();
+    const attempt = async (r) => {
+      const ct = r.headers.get('content-type') || '';
+      if (!r.ok) {
+        let msg = '';
+        try {
+          if (ct.includes('application/json')) {
+            const j = await r.json();
+            msg = j.detail || JSON.stringify(j);
+          } else {
+            msg = await r.text();
+          }
+        } catch {
+          msg = `HTTP ${r.status}`;
         }
-      } catch {
-        msg = `HTTP ${res.status}`;
+        throw new Error(msg || 'Request failed');
       }
-      throw new Error(msg || 'Request failed');
-    }
 
-    if (res.status === 204) return {};
-    if (!ct.includes('application/json')) {
-      const text = await res.text();
-      throw new Error(text || 'Non-JSON response received');
+      const clone = r.clone();
+      const text = await clone.text();
+      if (!ct.includes('application/json')) {
+        throw new Error(text || 'Non-JSON response received');
+      }
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server');
+      }
+      return JSON.parse(text);
+    };
+
+    try {
+      return await attempt(res);
+    } catch (e) {
+      // One controlled retry (lets AU settle the cookie)
+      await new Promise(r => setTimeout(r, 250));
+      res = await doFetch();
+      return await attempt(res);
     }
-    return res.json();
   }
 
   function renderTable(data) {
@@ -129,29 +163,11 @@
     statusText.textContent = "Loaded results.";
   }
 
-  async function searchByMachine() {
-    const v = machineInput.value.trim();
-    if (!v) {
-      showError("Machine ID required");
-      return;
-    }
-    showLoading("Searching machine...");
-    try {
-      const limit = parseInt(limitSelect.value) || 50;
-      const data = await fetchJson(`/api/search/machine?machine_id=${encodeURIComponent(v)}&limit=${limit}`);
-      lastSearch = { type: "machine", value: v };
-      renderTable(data);
-    } catch (e) {
-      showError(e.message);
-    }
-  }
-
+  // ---------- Searches (await prewarm) ----------
   async function searchByLocation() {
+    await prewarmViaIframe();
     const v = locationInput.value.trim();
-    if (!v) {
-      showError("Location required");
-      return;
-    }
+    if (!v) { showError("Location required"); return; }
     showLoading("Searching location...");
     try {
       const limit = parseInt(limitSelect.value) || 50;
@@ -163,7 +179,22 @@
     }
   }
 
-  // --- Download ALL matched from backend with credentials ---
+  async function searchByMachine() {
+    await prewarmViaIframe();
+    const v = machineInput.value.trim();
+    if (!v) { showError("Machine ID required"); return; }
+    showLoading("Searching machine...");
+    try {
+      const limit = parseInt(limitSelect.value) || 50;
+      const data = await fetchJson(`/api/search/machine?machine_id=${encodeURIComponent(v)}&limit=${limit}`);
+      lastSearch = { type: "machine", value: v };
+      renderTable(data);
+    } catch (e) {
+      showError(e.message);
+    }
+  }
+
+  // ---------- Download ALL matched ----------
   async function downloadAllMatched() {
     if (!lastSearch) {
       showError("Search first before exporting.");
@@ -217,7 +248,4 @@
 
   // Init
   showHint();
-  // Pre-warm cookie to avoid AU redirects breaking first API call
-  fetch('/health', { credentials: 'include' }).catch(() => {});
 })();
-

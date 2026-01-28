@@ -18,7 +18,7 @@ from starlette.requests import Request
 # PATHS
 # -------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-TEMPLATE_DIR = BASE_DIR / "template"   # <-- keep singular; matches your project
+TEMPLATE_DIR = BASE_DIR / "template"   # keep singular; matches your project
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "company_data.csv"
@@ -99,24 +99,20 @@ def _json_safe_value(v: Any) -> Any:
     """Convert values to JSON-safe types (NaN/Inf -> None, numpy scalars -> python scalars)."""
     if v is None:
         return None
-    # pandas NA / numpy nan
     try:
         if pd.isna(v):
             return None
     except Exception:
         pass
-    # Python float nan/inf
     if isinstance(v, float):
         if math.isnan(v) or math.isinf(v):
             return None
         return v
-    # numpy float/int
     if isinstance(v, (np.floating, np.integer)):
         vv = v.item()
         if isinstance(vv, float) and (math.isnan(vv) or math.isinf(vv)):
             return None
         return vv
-    # timestamps -> string
     if isinstance(v, (pd.Timestamp, np.datetime64)):
         try:
             return pd.to_datetime(v).isoformat()
@@ -132,10 +128,8 @@ def df_to_json_safe(df: pd.DataFrame) -> (List[str], List[Dict[str, Any]]):
     """
     if df is None or df.empty:
         return [], []
-    # Force object dtype so None can exist even for float columns
     cleaned = df.replace([np.inf, -np.inf], np.nan).astype(object)
     cleaned = cleaned.where(pd.notnull(cleaned), None)
-    # Convert to dict and then sanitize values recursively
     records = cleaned.to_dict(orient="records")
     safe_records = []
     for r in records:
@@ -159,7 +153,7 @@ def safe_load_data_or_error():
 
 
 # -------------------------------------------
-# SIMPLE PING
+# OPTIONAL PING (kept for diagnostics/future)
 # -------------------------------------------
 @app.get("/api/ping")
 def ping():
@@ -210,13 +204,13 @@ def search_machine(
 
     out = df.loc[mask].head(limit)
     cols, rows = df_to_json_safe(out)
-    return {
+    return JSONResponse(content={
         "query": mid,
         "matched_rows": int(mask.sum()),
         "returned_rows": len(out),
         "columns": cols,
         "rows": rows,
-    }
+    })
 
 
 # -------------------------------------------
@@ -232,7 +226,7 @@ def search_location(
         return err
 
     query = q.strip()
-    # Detect Country/State/City case-insensitively (your CSV has these exact)
+    # Detect Country/State/City case-insensitively
     cols_lower = {c.lower(): c for c in df.columns}
     country_col = cols_lower.get("country")
     state_col = cols_lower.get("state")
@@ -244,17 +238,17 @@ def search_location(
     mask = None
     for col in cols:
         m = safe_contains_any(df[col], query)
-        mask = m if mask is None else (mask | m)  # <-- ensure bitwise OR
+        mask = m if mask is None else (mask | m)  # bitwise OR
 
     out = df.loc[mask].head(limit)
     cols_out, rows_out = df_to_json_safe(out)
-    return {
+    return JSONResponse(content={
         "query": q,
         "matched_rows": int(mask.sum()),
         "returned_rows": len(out),
         "columns": cols_out,
         "rows": rows_out,
-    }
+    })
 
 
 # -------------------------------------------
@@ -269,10 +263,8 @@ def stream_df_as_csv(df: pd.DataFrame, filename: str):
         buffer.seek(0)
         buffer.truncate(0)
 
-        # Optional: replace inf/-inf with blank and NaN with blank in export
         df2 = df.replace([np.inf, -np.inf], np.nan)
         for row in df2.itertuples(index=False, name=None):
-            # Convert nan/inf -> "" for nicer CSV
             row_out = [("" if (isinstance(v, float) and (math.isnan(v) or math.isinf(v))) else v) for v in row]
             writer.writerow(row_out)
             yield buffer.getvalue()
