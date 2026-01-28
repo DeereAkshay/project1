@@ -218,6 +218,6 @@
   // Init
   showHint();
   // Pre-warm cookie to avoid AU redirects breaking first API call
-  fetch('/api/ping', { credentials: 'include' }).catch(() => {});
+  fetch('/health', { credentials: 'include' }).catch(() => {});
 })();
 
