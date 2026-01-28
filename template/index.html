@@ -4,13 +4,15 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dataset Explorer</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=7" />
+  <!-- Load JS with defer so it runs after DOM is parsed -->
+  <script src="/static/script.js?v=7" defer></script>
 </head>
 <body>
   <!-- Header: ONLY left-side logo -->
   <header class="topbar">
     <div class="brand">
-      <img src="/static/jd_logo.png" alt="JD Logo" class="jd-logo-img">
+      <img src="/static/jd_logo.png" alt="JD Logo" class="jd-logo-img" />
     </div>
     <div class="topbar-actions">
       <span class="pill" id="appStatusPill">Ready</span>
@@ -84,9 +86,5 @@
   </main>
 
   <div id="toastContainer" class="toast-container"></div>
-
-  <script src="/static/script.js?v=6" defer></script>
 </body>
 </html>
-
-

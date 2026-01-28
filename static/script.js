@@ -1,4 +1,15 @@
-(function () {
+// Run AFTER DOM is ready even if defer accidentally removed
+(function attachWhenReady() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+
+function boot() {
+  console.log('JD app booted');
+
   // ---- DOM references ----
   const outputBox = document.getElementById("outputBox");
   const outputSubtitle = document.getElementById("outputSubtitle");
@@ -17,7 +28,15 @@
   const statusText = document.getElementById("statusText");
   const copyJsonBtn = document.getElementById("copyJsonBtn");
 
-  // Track last search for export: { type: "machine"|"location", value: "..." }
+  // Guard: if critical elements are missing, stop and show why
+  const critical = [outputBox, machineBtn, locationBtn, limitSelect];
+  if (critical.some(el => !el)) {
+    console.error('DOM not ready or IDs changed', { outputBox, machineBtn, locationBtn, limitSelect });
+    alert('Internal error: UI elements not found. Please refresh.');
+    return;
+  }
+
+  // Track last search for export
   let lastSearch = null;
   let lastResult = null;
 
@@ -238,8 +257,8 @@
   }
 
   // ---- Bind Events ----
-  machineBtn.onclick = searchByMachine;
-  locationBtn.onclick = searchByLocation;
+  machineBtn.onclick = () => { console.log('Machine search click'); searchByMachine(); };
+  locationBtn.onclick = () => { console.log('Location search click'); searchByLocation(); };
   machineInput.onkeydown = e => { if (e.key === "Enter") searchByMachine(); };
   locationInput.onkeydown = e => { if (e.key === "Enter") searchByLocation(); };
   clearBtn.onclick = showHint;
@@ -248,4 +267,7 @@
 
   // Init
   showHint();
-})();
+}
+
+
+
